@@ -19,6 +19,8 @@ using namespace std;
 vector<Instructions> insReference;
 list<Page> mainMemory;//设内存一次能容纳4条指令,存放页a号
 priority_queue<Page, vector<Page>, Page_2> qMM;
+vector<Page> clockMemory;//用于clock算法
+int clockPos=0;//用于clock算法中的循环队列
 void InitializeInsSet();
 void ObsoleteOPT(int curPos);
 void ExecuteOPT();
@@ -31,19 +33,23 @@ void ExecuteLRU();
 void ObsoleteLRU();
 void addPageFIFO(int i);
 void ExecuteFIFO();
+void addPageClock(int i);
+void ObsoleteClock();
+void ExecuteClock();
 int hit=0;
 int main(int argc, const char * argv[]) {
     InitializeInsSet();
     while(1){
 //        insReference.clear();
         mainMemory.clear();
+        clockMemory.clear();
         while (qMM.empty()==false) {
             qMM.pop();
         }
         hit=0;
         int choice=0;
 //        InitializeInsSet();
-        cout<<"请选择算法（1=OPT;2=LFU;3=LRU;4=FIFO）:";
+        cout<<"请选择算法（1=OPT;2=LFU;3=LRU;4=FIFO;5=CLOCK）:";
         cin>>choice;
         switch (choice) {
             case 1:
@@ -57,6 +63,9 @@ int main(int argc, const char * argv[]) {
                 break;
             case 4:
                 ExecuteFIFO();
+                break;
+            case 5:
+                ExecuteClock();
                 break;
             default:
                 cout<<"输入错误"<<endl;
@@ -176,6 +185,7 @@ void ExecuteLFU(){
         while (q.empty()==false) {
             if(q.top().Page_Id==insReference[i].Page){
                 priority_queue<Page, vector<Page>, Page_2> q_temp;
+                //查找遍历堆
                 while (qMM.empty()==false) {
                     if(qMM.top().Page_Id==q.top().Page_Id){//在主存中找到了该页面
                         Page temp;
@@ -314,29 +324,22 @@ void ExecuteFIFO(){
         //        查找页面号
         for(iter=mainMemory.begin();iter!=mainMemory.end();iter++){
             if(iter->Page_Id==insReference[i].Page){
-                //                mainMemory.erase(iter);
-//                iter->Time_Stamp=i;
                 break;
             }
         }
         if(mainMemory.size()<4){
             if(iter==mainMemory.end()){
                 cout<<"内存有空余，";
-//                addPageLRU(i);
                 addPageFIFO(i);
-                
             }
             continue;
         }
         if(iter!=mainMemory.end()){
-            //            iter->Visited=i;
             hit++;
             cout<<"内存中存在该页面"<<endl;
         }
         else{
             cout<<"内存中不存在该页面"<<endl;
-//            ObsoleteLRU();
-//            addPageLRU(i);
             cout<<"淘汰第"<<mainMemory.front().Page_Id<<"页，";
             mainMemory.pop_front();
             addPageFIFO(i);
@@ -353,4 +356,86 @@ void addPageFIFO(int i){
     temp.Visited=-1;
     cout<<"调入第"<<temp.Page_Id<<"页"<<endl;
     mainMemory.push_back(temp);
+}
+
+void ExecuteClock(){
+    srand((int)time(NULL));
+    for(int i=0;i<insReference.size();i++){
+        cout<<endl<<"执行指令"<<insReference[i].Instruction_Id<<"，所在页的页号"<<insReference[i].Page<<endl;
+        cout<<"当前内存中页号："<<endl;
+        //此处借用时间戳字段表示修改位
+        int k=0;
+        //显示内存
+        for(k=0;k<clockMemory.size();k++){
+            cout<<clockMemory[k].Page_Id<<":"<<clockMemory[k].Visited<<":"<<clockMemory[k].Time_Stamp<<endl;
+        }
+        
+        //查找
+        for(k=0;k<clockMemory.size();k++){
+            if(insReference[i].Page==clockMemory[k].Page_Id){
+                //找到了
+                break;
+            }
+        }
+        if(clockMemory.size()<4){
+            if(k==clockMemory.size()){
+                cout<<"内存有空余，";
+                addPageClock(i);
+//                continue;
+            }
+            continue;
+        }
+        else{
+            if(k!=clockMemory.size()){
+                hit++;
+                cout<<"内存中存在该页面"<<endl;
+            }
+            else{
+                cout<<"内存中不存在该页面"<<endl;
+                ObsoleteClock();
+                addPageClock(i);
+                
+            }
+        }
+        
+        
+    }
+    cout<<"完成，命中率为"<<double(hit)/insReference.size()*100<<"%"<<endl;
+}
+void addPageClock(int i){
+    Page temp;
+    temp.Page_Id=insReference[i].Page;
+    temp.Time_Stamp=random(0, 1);//随机决定是否有血操作
+    temp.Visited=1;
+    cout<<"调入第"<<temp.Page_Id<<"页"<<endl;
+    clockMemory.push_back(temp);
+}
+
+void ObsoleteClock(){
+    int count=0;
+    while(true){
+        int posTemp=clockPos%clockMemory.size();
+        cout<<"第"<<count+1<<"轮次扫描，"<<"当前指针位置："<<clockPos<<endl;
+        clockPos=(clockPos+1)%clockMemory.size();
+        //第一遍扫描
+        for(int i=clockPos;i!=posTemp;i=(i+1)%clockMemory.size()){
+            if(clockMemory[i].Visited==0&&clockMemory[i].Time_Stamp==0){
+                cout<<"淘汰第"<<clockMemory[i].Page_Id<<"页";
+                clockMemory.erase(clockMemory.begin()+i);
+                return;
+            }
+        }
+        count++;
+        //第二轮扫描
+        for(int i=clockPos;i!=posTemp&&clockMemory.size()!=0;i=(i+1)%clockMemory.size()){
+            if(clockMemory[i].Visited==0&&clockMemory[i].Time_Stamp==1){
+                cout<<"淘汰第"<<clockMemory[i].Page_Id<<"页";
+                clockMemory.erase(clockMemory.begin()+i);
+                return;
+            }
+            else{
+                clockMemory[i].Visited=0;
+            }
+        }
+    }
 }
